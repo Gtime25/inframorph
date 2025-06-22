@@ -1,0 +1,36 @@
+language = "python3"
+run = "python Backend/main.py"
+entrypoint = "Backend/main.py"
+
+[nix]
+channel = "stable-23_11"
+
+[env]
+PYTHONPATH = "${REPL_HOME}"
+
+[packager]
+language = "python3"
+
+[packager.features]
+packageSearch = true
+guessImports = true
+
+[languages.python3]
+pattern = "**/*.py"
+syntax = "python"
+
+[languages.javascript]
+pattern = "**/*.js"
+syntax = "javascript"
+
+[languages.jsx]
+pattern = "**/*.jsx"
+syntax = "jsx"
+
+[languages.css]
+pattern = "**/*.css"
+syntax = "css"
+
+[languages.html]
+pattern = "**/*.html"
+syntax = "html" 

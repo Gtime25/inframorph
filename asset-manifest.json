@@ -1,0 +1,13 @@
+{
+  "files": {
+    "main.css": "/inframorph/static/css/main.9287d580.css",
+    "main.js": "/inframorph/static/js/main.5af7f694.js",
+    "index.html": "/inframorph/index.html",
+    "main.9287d580.css.map": "/inframorph/static/css/main.9287d580.css.map",
+    "main.5af7f694.js.map": "/inframorph/static/js/main.5af7f694.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.9287d580.css",
+    "static/js/main.5af7f694.js"
+  ]
+}
