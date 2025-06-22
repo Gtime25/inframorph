@@ -1,203 +1,395 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { 
+  CloudArrowUpIcon, 
+  ShieldCheckIcon, 
+  CurrencyDollarIcon,
+  ChartBarIcon,
+  ExclamationTriangleIcon,
+  ChatBubbleLeftRightIcon,
+  TrashIcon,
+  EyeIcon
+} from '@heroicons/react/24/outline';
+import Onboarding from '../components/Onboarding';
+import FeedbackModal from '../components/FeedbackModal';
+import AnalysisHistoryModal from '../components/AnalysisHistoryModal';
+import GitHubIcon from '../components/GitHubIcon';
 
 const Dashboard = ({ user, token }) => {
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [showAnalysisHistory, setShowAnalysisHistory] = useState(false);
+  const [recentAnalyses, setRecentAnalyses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState(null);
+
+  useEffect(() => {
+    // Check if user needs onboarding
+    const onboardingCompleted = localStorage.getItem('inframorph_onboarding_completed');
+    if (!onboardingCompleted && user) {
+      setShowOnboarding(true);
+    }
+
+    // Load recent analyses
+    loadRecentAnalyses();
+  }, [user, token]);
+
+  const loadRecentAnalyses = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/analyses', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setRecentAnalyses(data.analyses || []);
+      }
+    } catch (error) {
+      console.error('Error loading analyses:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteAnalysis = async (analysisId) => {
+    if (!window.confirm('Are you sure you want to delete this analysis? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      setDeletingId(analysisId);
+      const response = await fetch(`http://localhost:8000/analyses/${analysisId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        // Remove from local state
+        setRecentAnalyses(recentAnalyses.filter(analysis => analysis.analysis_id !== analysisId));
+      } else {
+        alert('Failed to delete analysis');
+      }
+    } catch (error) {
+      console.error('Error deleting analysis:', error);
+      alert('Error deleting analysis');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleOnboardingComplete = () => {
+    setShowOnboarding(false);
+    localStorage.setItem('inframorph_onboarding_completed', 'true');
+  };
+
+  const features = [
+    {
+      title: "Upload Infrastructure",
+      description: "Analyze Terraform and Ansible files",
+      icon: CloudArrowUpIcon,
+      link: "/analysis",
+      color: "bg-blue-500",
+      hoverColor: "hover:bg-blue-600"
+    },
+    {
+      title: "GitHub Integration",
+      description: "Connect repositories for automated analysis",
+      icon: GitHubIcon,
+      link: "/github-connect",
+      color: "bg-gray-700",
+      hoverColor: "hover:bg-gray-800"
+    },
+    {
+      title: "Security Analysis",
+      description: "Advanced security vulnerability detection",
+      icon: ShieldCheckIcon,
+      link: "/security-analysis",
+      color: "bg-red-500",
+      hoverColor: "hover:bg-red-600"
+    },
+    {
+      title: "Drift Detection",
+      description: "Monitor infrastructure changes",
+      icon: ExclamationTriangleIcon,
+      link: "/drift-detection",
+      color: "bg-yellow-500",
+      hoverColor: "hover:bg-yellow-600"
+    },
+    {
+      title: "Cost Optimization",
+      description: "Identify cost-saving opportunities",
+      icon: CurrencyDollarIcon,
+      link: "/analysis",
+      color: "bg-green-500",
+      hoverColor: "hover:bg-green-600"
+    },
+    {
+      title: "Multi-Cloud Support",
+      description: "AWS, Azure, and GCP analysis",
+      icon: ChartBarIcon,
+      link: "/analysis",
+      color: "bg-purple-500",
+      hoverColor: "hover:bg-purple-600"
+    }
+  ];
+
   return (
     <div className="min-h-screen bg-gray-50">
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        {/* Welcome Section */}
-        <div className="px-4 py-6 sm:px-0">
-          <div className="bg-white overflow-hidden shadow rounded-lg">
-            <div className="px-4 py-5 sm:p-6">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <div className="h-12 w-12 rounded-full bg-indigo-100 flex items-center justify-center">
-                    <span className="text-lg font-medium text-indigo-600">
-                      {user?.username?.charAt(0).toUpperCase()}
-                    </span>
-                  </div>
-                </div>
-                <div className="ml-4">
-                  <h1 className="text-2xl font-bold text-gray-900">
-                    Welcome back, {user?.username}!
-                  </h1>
-                  <p className="text-gray-600">
-                    Ready to optimize your infrastructure with AI-powered analysis?
-                  </p>
-                </div>
-              </div>
+      {/* Header */}
+      <div className="bg-white shadow">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-6">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">
+                Welcome back, {user?.username}!
+              </h1>
+              <p className="text-gray-600 mt-1">
+                Ready to optimize your infrastructure with AI-powered insights
+              </p>
             </div>
-          </div>
-        </div>
-
-        {/* Quick Actions */}
-        <div className="px-4 py-6 sm:px-0">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">Quick Actions</h2>
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {/* Analyze Files */}
-            <Link
-              to="/analysis"
-              className="relative group bg-white p-6 focus-within:ring-2 focus-within:ring-inset focus-within:ring-indigo-500 rounded-lg shadow hover:shadow-md transition-shadow"
-            >
-              <div>
-                <span className="rounded-lg inline-flex p-3 bg-blue-50 text-blue-700 ring-4 ring-white">
-                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </span>
-              </div>
-              <div className="mt-8">
-                <h3 className="text-lg font-medium">
-                  <span className="absolute inset-0" aria-hidden="true" />
-                  Analyze Files
-                </h3>
-                <p className="mt-2 text-sm text-gray-500">
-                  Upload your Terraform and Ansible files for AI-powered analysis and optimization suggestions.
-                </p>
-              </div>
-              <span
-                className="pointer-events-none absolute top-6 right-6 text-gray-300 group-hover:text-gray-400"
-                aria-hidden="true"
+            <div className="flex space-x-3">
+              <button
+                onClick={() => setShowFeedback(true)}
+                className="flex items-center px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
               >
-                <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M20 4h1a1 1 0 00-1-1v1zm-1 12a1 1 0 102 0h-2zM8 3a1 1 0 000 2V3zM3.293 19.293a1 1 0 101.414 1.414l-1.414-1.414zM19 4v12h2V4h-2zm1-1H8v2h12V3zm-.707.293l-16 16 1.414 1.414 16-16-1.414-1.414z" />
-                </svg>
-              </span>
-            </Link>
+                <ChatBubbleLeftRightIcon className="w-5 h-5 mr-2" />
+                Feedback
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
 
-            {/* GitHub Connect */}
-            <Link
-              to="/github-connect"
-              className="relative group bg-white p-6 focus-within:ring-2 focus-within:ring-inset focus-within:ring-indigo-500 rounded-lg shadow hover:shadow-md transition-shadow"
-            >
-              <div>
-                <span className="rounded-lg inline-flex p-3 bg-green-50 text-green-700 ring-4 ring-white">
-                  <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
-                  </svg>
-                </span>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Quick Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center">
+              <div className="p-2 bg-blue-100 rounded-lg">
+                <ChartBarIcon className="w-6 h-6 text-blue-600" />
               </div>
-              <div className="mt-8">
-                <h3 className="text-lg font-medium">
-                  <span className="absolute inset-0" aria-hidden="true" />
-                  Connect GitHub
-                </h3>
-                <p className="mt-2 text-sm text-gray-500">
-                  Connect your GitHub repositories to analyze infrastructure code directly from your repos.
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600">Total Analyses</p>
+                <p className="text-2xl font-semibold text-gray-900">
+                  {recentAnalyses.length}
                 </p>
               </div>
-              <span
-                className="pointer-events-none absolute top-6 right-6 text-gray-300 group-hover:text-gray-400"
-                aria-hidden="true"
+            </div>
+          </div>
+          
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center">
+              <div className="p-2 bg-green-100 rounded-lg">
+                <ShieldCheckIcon className="w-6 h-6 text-green-600" />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600">Security Score</p>
+                <p className="text-2xl font-semibold text-gray-900">85</p>
+              </div>
+            </div>
+          </div>
+          
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center">
+              <div className="p-2 bg-yellow-100 rounded-lg">
+                <CurrencyDollarIcon className="w-6 h-6 text-yellow-600" />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600">Cost Savings</p>
+                <p className="text-2xl font-semibold text-gray-900">$2.4K</p>
+              </div>
+            </div>
+          </div>
+          
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center">
+              <div className="p-2 bg-purple-100 rounded-lg">
+                <ExclamationTriangleIcon className="w-6 h-6 text-purple-600" />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600">Issues Found</p>
+                <p className="text-2xl font-semibold text-gray-900">12</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Features Grid */}
+        <div className="mb-8">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">
+            What would you like to do?
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {features.map((feature, index) => (
+              <Link
+                key={index}
+                to={feature.link}
+                className="group block bg-white rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-all duration-200"
               >
-                <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M20 4h1a1 1 0 00-1-1v1zm-1 12a1 1 0 102 0h-2zM8 3a1 1 0 000 2V3zM3.293 19.293a1 1 0 101.414 1.414l-1.414-1.414zM19 4v12h2V4h-2zm1-1H8v2h12V3zm-.707.293l-16 16 1.414 1.414 16-16-1.414-1.414z" />
-                </svg>
-              </span>
-            </Link>
+                <div className="p-6">
+                  <div className="flex items-center">
+                    <div className={`p-3 rounded-lg ${feature.color} ${feature.hoverColor} transition-colors`}>
+                      <feature.icon className="w-6 h-6 text-white" />
+                    </div>
+                    <div className="ml-4">
+                      <h3 className="text-lg font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
+                        {feature.title}
+                      </h3>
+                      <p className="text-gray-600 mt-1">
+                        {feature.description}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
 
-            {/* Recent Analysis */}
-            <div className="relative group bg-white p-6 focus-within:ring-2 focus-within:ring-inset focus-within:ring-indigo-500 rounded-lg shadow">
-              <div>
-                <span className="rounded-lg inline-flex p-3 bg-purple-50 text-purple-700 ring-4 ring-white">
-                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                  </svg>
-                </span>
+        {/* Recent Analyses */}
+        <div className="bg-white rounded-lg shadow">
+          <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+            <h3 className="text-lg font-semibold text-gray-900">
+              Recent Analyses
+            </h3>
+            {recentAnalyses.length > 5 && (
+              <button
+                onClick={() => setShowAnalysisHistory(true)}
+                className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+              >
+                Show More
+              </button>
+            )}
+          </div>
+          <div className="p-6">
+            {loading ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                <p className="text-gray-600 mt-2">Loading recent analyses...</p>
               </div>
-              <div className="mt-8">
-                <h3 className="text-lg font-medium text-gray-900">
-                  Recent Analysis
-                </h3>
-                <p className="mt-2 text-sm text-gray-500">
-                  View your recent infrastructure analysis results and optimization recommendations.
+            ) : recentAnalyses.length > 0 ? (
+              <div className="space-y-4">
+                {recentAnalyses.slice(0, 5).map((analysis) => (
+                  <div
+                    key={analysis.analysis_id}
+                    className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    <div>
+                      <h4 className="font-medium text-gray-900">
+                        Analysis {analysis.analysis_id.slice(0, 8)}...
+                      </h4>
+                      <p className="text-sm text-gray-600">
+                        {new Date(analysis.timestamp).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <div className="flex items-center space-x-3">
+                      <Link
+                        to={`/results/${analysis.analysis_id}`}
+                        className="flex items-center text-blue-600 hover:text-blue-800 font-medium"
+                      >
+                        <EyeIcon className="w-4 h-4 mr-1" />
+                        View
+                      </Link>
+                      <button
+                        onClick={() => handleDeleteAnalysis(analysis.analysis_id)}
+                        disabled={deletingId === analysis.analysis_id}
+                        className="flex items-center text-red-600 hover:text-red-800 font-medium disabled:opacity-50"
+                      >
+                        <TrashIcon className="w-4 h-4 mr-1" />
+                        {deletingId === analysis.analysis_id ? 'Deleting...' : 'Delete'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <CloudArrowUpIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                <h4 className="text-lg font-medium text-gray-900 mb-2">
+                  No analyses yet
+                </h4>
+                <p className="text-gray-600 mb-4">
+                  Start by uploading your infrastructure files for analysis
                 </p>
-                <div className="mt-4">
-                  <p className="text-sm text-gray-400">No recent analysis found.</p>
-                </div>
+                <Link
+                  to="/analysis"
+                  className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                >
+                  <CloudArrowUpIcon className="w-5 h-5 mr-2" />
+                  Upload Files
+                </Link>
               </div>
-            </div>
+            )}
           </div>
         </div>
 
-        {/* Features Overview */}
-        <div className="px-4 py-6 sm:px-0">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">What InfraMorph Can Do</h2>
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="bg-white overflow-hidden shadow rounded-lg">
-              <div className="p-5">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <svg className="h-6 w-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                    </svg>
-                  </div>
-                  <div className="ml-5 w-0 flex-1">
-                    <dl>
-                      <dt className="text-sm font-medium text-gray-500 truncate">Security Issues</dt>
-                      <dd className="text-lg font-medium text-gray-900">Identify vulnerabilities</dd>
-                    </dl>
-                  </div>
-                </div>
-              </div>
+        {/* Demo Files Section */}
+        <div className="mt-8 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            🎯 Try Our Demo Files
+          </h3>
+          <p className="text-gray-600 mb-4">
+            Not sure where to start? We've created sample infrastructure files with common security and cost issues for you to test InfraMorph's capabilities.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-white p-4 rounded-lg border">
+              <h4 className="font-semibold text-gray-900 mb-2">AWS Demo</h4>
+              <p className="text-gray-600 text-sm mb-3">
+                Contains security groups, S3 buckets, RDS instances with various issues
+              </p>
+              <Link
+                to="/analysis?demo=aws"
+                className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+              >
+                Use Demo File →
+              </Link>
             </div>
-
-            <div className="bg-white overflow-hidden shadow rounded-lg">
-              <div className="p-5">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <svg className="h-6 w-6 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
-                    </svg>
-                  </div>
-                  <div className="ml-5 w-0 flex-1">
-                    <dl>
-                      <dt className="text-sm font-medium text-gray-500 truncate">Cost Optimization</dt>
-                      <dd className="text-lg font-medium text-gray-900">Reduce expenses</dd>
-                    </dl>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white overflow-hidden shadow rounded-lg">
-              <div className="p-5">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <svg className="h-6 w-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zM21 5a2 2 0 00-2-2h-4a2 2 0 00-2 2v12a4 4 0 004 4h4a2 2 0 002-2V5z" />
-                    </svg>
-                  </div>
-                  <div className="ml-5 w-0 flex-1">
-                    <dl>
-                      <dt className="text-sm font-medium text-gray-500 truncate">Code Quality</dt>
-                      <dd className="text-lg font-medium text-gray-900">Improve standards</dd>
-                    </dl>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white overflow-hidden shadow rounded-lg">
-              <div className="p-5">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <svg className="h-6 w-6 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-                    </svg>
-                  </div>
-                  <div className="ml-5 w-0 flex-1">
-                    <dl>
-                      <dt className="text-sm font-medium text-gray-500 truncate">Auto Refactor</dt>
-                      <dd className="text-lg font-medium text-gray-900">Generate PRs</dd>
-                    </dl>
-                  </div>
-                </div>
-              </div>
+            <div className="bg-white p-4 rounded-lg border">
+              <h4 className="font-semibold text-gray-900 mb-2">Azure Demo</h4>
+              <p className="text-gray-600 text-sm mb-3">
+                Contains VMs, storage accounts, SQL databases with security issues
+              </p>
+              <Link
+                to="/analysis?demo=azure"
+                className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+              >
+                Use Demo File →
+              </Link>
             </div>
           </div>
         </div>
-      </main>
+      </div>
+
+      {/* Onboarding Modal */}
+      {showOnboarding && (
+        <Onboarding
+          user={user}
+          onComplete={handleOnboardingComplete}
+        />
+      )}
+
+      {/* Feedback Modal */}
+      {showFeedback && (
+        <FeedbackModal
+          isOpen={showFeedback}
+          onClose={() => setShowFeedback(false)}
+          user={user}
+          token={token}
+        />
+      )}
+
+      {/* Analysis History Modal */}
+      {showAnalysisHistory && (
+        <AnalysisHistoryModal
+          isOpen={showAnalysisHistory}
+          onClose={() => setShowAnalysisHistory(false)}
+          token={token}
+        />
+      )}
     </div>
   );
 };

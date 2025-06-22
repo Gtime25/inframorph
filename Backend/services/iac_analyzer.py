@@ -74,45 +74,62 @@ Infrastructure Code:
 
 Analysis Type: {analysis_type.title()}
 
+IMPORTANT: You MUST generate refactored_code with the EXACT same file names as the original files. Use the file names from the "File:" lines above.
+
 Please provide a comprehensive analysis in the following JSON format:
 {{
     "summary": "Brief overview of the infrastructure and main findings",
     "recommendations": [
         {{
             "category": "security|cost|best_practice|naming",
-            "severity": "high|medium|low",
             "title": "Short title",
             "description": "Detailed description",
-            "impact": "What this means for the infrastructure",
-            "suggestion": "How to fix or improve this"
+            "priority": "high|medium|low",
+            "impact": "What this means for the infrastructure"
         }}
     ],
-    "refactored_code": {{
-        "file_name": "Refactored version of the code with improvements"
-    }},
+    "refactored_code": [
+        {{
+            "file_path": "EXACT_ORIGINAL_FILENAME.tf",
+            "original_content": "Original code content",
+            "refactored_content": "Complete refactored version of the file with all improvements applied",
+            "changes_summary": "Summary of changes made"
+        }}
+    ],
     "security_issues": [
         {{
-            "issue": "Security vulnerability description",
             "severity": "high|medium|low",
+            "title": "Security vulnerability title",
+            "description": "Detailed description of the security issue",
+            "file_path": "EXACT_ORIGINAL_FILENAME.tf",
             "recommendation": "How to fix this security issue"
         }}
     ],
     "cost_optimizations": [
         {{
-            "optimization": "Cost optimization opportunity",
+            "resource_type": "EC2|S3|RDS|etc",
+            "current_cost": "Current estimated cost",
             "potential_savings": "Estimated cost savings",
-            "implementation": "How to implement this optimization"
+            "recommendation": "How to implement this optimization",
+            "file_path": "EXACT_ORIGINAL_FILENAME.tf"
         }}
     ],
     "naming_issues": [
         {{
-            "issue": "Naming convention violation",
+            "issue_type": "inconsistent_naming|missing_prefix|etc",
             "current_name": "Current problematic name",
             "suggested_name": "Better naming suggestion",
+            "file_path": "EXACT_ORIGINAL_FILENAME.tf",
             "reason": "Why this naming is better"
         }}
     ]
 }}
+
+CRITICAL REQUIREMENTS:
+1. Use the EXACT file names from the original files (e.g., if the file is "aws_demo.tf", use "aws_demo.tf" in all file_path fields)
+2. Generate complete refactored_code entries with the full improved file content
+3. Ensure refactored_content is a complete, valid Terraform file
+4. Make sure all file_path references match the original file names exactly
 """
         
         if github_repo:
@@ -161,7 +178,7 @@ Please provide a comprehensive analysis in the following JSON format:
             return {
                 "summary": parsed.get("summary", "Analysis completed"),
                 "recommendations": parsed.get("recommendations", []),
-                "refactored_code": parsed.get("refactored_code", {}),
+                "refactored_code": parsed.get("refactored_code", []),
                 "security_issues": parsed.get("security_issues", []),
                 "cost_optimizations": parsed.get("cost_optimizations", []),
                 "naming_issues": parsed.get("naming_issues", [])
@@ -174,28 +191,42 @@ Please provide a comprehensive analysis in the following JSON format:
     def _generate_mock_analysis(self, analysis_type: str, file_paths: List[str]) -> Dict[str, Any]:
         """Generate mock analysis data for testing."""
         
+        # Use actual file names from the analysis
+        file_name = "main.tf"  # Default fallback
+        if file_paths:
+            # Get the first file name, or use the most common Terraform file
+            file_name = Path(file_paths[0]).name if file_paths else "main.tf"
+        
         mock_data = {
             "summary": f"Mock {analysis_type} analysis completed for {len(file_paths)} files. This is sample data for demonstration purposes.",
             "recommendations": [
                 {
                     "category": "security",
-                    "severity": "high",
                     "title": "Enable encryption at rest",
-                    "description": "Storage resources should have encryption enabled",
-                    "impact": "Data could be exposed if storage is compromised",
-                    "suggestion": "Add encryption configuration to storage resources"
+                    "description": "Storage resources should have encryption enabled to protect data at rest",
+                    "priority": "high",
+                    "impact": "Data could be exposed if storage is compromised"
                 },
                 {
                     "category": "cost",
-                    "severity": "medium",
                     "title": "Optimize instance sizing",
-                    "description": "Current instance types may be oversized for workload",
-                    "impact": "Unnecessary costs for unused resources",
-                    "suggestion": "Consider smaller instance types or auto-scaling"
+                    "description": "Current instance types may be oversized for workload requirements",
+                    "priority": "medium",
+                    "impact": "Unnecessary costs for unused resources"
+                },
+                {
+                    "category": "best_practice",
+                    "title": "Add resource tagging",
+                    "description": "Implement consistent tagging strategy for better resource management",
+                    "priority": "medium",
+                    "impact": "Improved resource organization and cost tracking"
                 }
             ],
-            "refactored_code": {
-                "main.tf": """
+            "refactored_code": [
+                {
+                    "file_path": file_name,
+                    "original_content": "# Original Terraform configuration",
+                    "refactored_content": """
 # Refactored Terraform configuration
 resource "aws_instance" "example" {
   ami           = "ami-12345678"
@@ -211,27 +242,34 @@ resource "aws_instance" "example" {
     encrypted = true
   }
 }
-"""
-            },
+""",
+                    "changes_summary": "Added encryption, optimized instance size, and improved tagging"
+                }
+            ],
             "security_issues": [
                 {
-                    "issue": "Missing encryption configuration",
                     "severity": "high",
+                    "title": "Missing encryption configuration",
+                    "description": "Storage resources lack encryption at rest",
+                    "file_path": file_name,
                     "recommendation": "Enable encryption for all storage resources"
                 }
             ],
             "cost_optimizations": [
                 {
-                    "optimization": "Reduce instance size",
-                    "potential_savings": "$50-100/month",
-                    "implementation": "Change instance type from t3.large to t3.micro"
+                    "resource_type": "EC2",
+                    "current_cost": "$100/month",
+                    "potential_savings": "$50/month",
+                    "recommendation": "Change instance type from t3.large to t3.micro",
+                    "file_path": file_name
                 }
             ],
             "naming_issues": [
                 {
-                    "issue": "Inconsistent naming convention",
+                    "issue_type": "inconsistent_naming",
                     "current_name": "my-instance",
                     "suggested_name": "prod-web-server-01",
+                    "file_path": file_name,
                     "reason": "Follows environment-resource-type-number pattern"
                 }
             ]

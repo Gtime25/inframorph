@@ -1,41 +1,33 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Depends, status
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import os
-import tempfile
-import aiofiles
-from typing import List, Optional
-import json
-from datetime import datetime, timedelta
-import sqlite3
 from pathlib import Path
 from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy.orm import Session
+from models.database import get_db, engine, Base
+from models.auth import create_access_token, get_current_user, User
+from models.schemas import UserCreate, UserLogin, AnalysisRequest, AnalysisResponse
+from services.iac_analyzer import analyze_terraform
+from services.security_analyzer import analyze_security
+from services.github_service import create_automated_prs
+from services.drift_detector import detect_drift
+from services.cloud_provider import get_cloud_resources
+import json
+from datetime import datetime, timedelta
+from jose import JWTError, jwt
 
 # Load environment variables from .env file
 load_dotenv()
 
-from services.iac_analyzer import IACAnalyzer
-from services.github_service import GitHubService
-from models.database import init_db, save_analysis
-from models.schemas import AnalysisRequest, AnalysisResponse, AnalysisResult
-from models.auth import (
-    User, UserCreate, UserLogin, Token, 
-    authenticate_user, create_user, get_user_by_username,
-    create_access_token, verify_token, init_auth_db,
-    ACCESS_TOKEN_EXPIRE_MINUTES
-)
+# JWT Configuration
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-here")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
 
-app = FastAPI(
-    title="InfraMorph API",
-    description="AI-powered infrastructure optimization tool",
-    version="1.0.0"
-)
+app = FastAPI(title="InfraMorph API", version="1.0.0")
 
-# Security
-security = HTTPBearer()
-
-# CORS middleware for frontend communication
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
@@ -44,260 +36,247 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize databases
-init_db()
-init_auth_db()
-
-# Dependency to get current user
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> User:
-    token = credentials.credentials
-    username = verify_token(token)
-    if username is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    user = get_user_by_username(username)
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    return user
+# Create database tables
+Base.metadata.create_all(bind=engine)
 
 @app.get("/")
 async def root():
     return {"message": "InfraMorph API is running!"}
 
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
-
-@app.post("/auth/signup", response_model=Token)
-async def signup(user_data: UserCreate):
-    """Create a new user account"""
-    # Check if username already exists
-    if get_user_by_username(user_data.username):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username already registered"
-        )
+@app.post("/auth/signup", response_model=dict)
+async def signup(user_data: UserCreate, db: Session = Depends(get_db)):
+    # Check if user already exists
+    existing_user = db.query(User).filter(User.username == user_data.username).first()
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Username already registered")
     
     # Create new user
-    user = create_user(
-        username=user_data.username,
-        password=user_data.password,
-        email=user_data.email
-    )
-    
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Failed to create user"
-        )
+    user = User(username=user_data.username)
+    user.set_password(user_data.password)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
     
     # Create access token
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": user.username}, expires_delta=access_token_expires
+        data={"sub": user.username},
+        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     
-    return Token(
-        access_token=access_token,
-        token_type="bearer",
-        user=user
-    )
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {"username": user.username, "id": user.id}
+    }
 
-@app.post("/auth/login", response_model=Token)
-async def login(user_data: UserLogin):
-    """Authenticate user and return access token"""
-    user = authenticate_user(user_data.username, user_data.password)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+@app.post("/auth/login", response_model=dict)
+async def login(user_data: UserLogin, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.username == user_data.username).first()
+    if not user or not user.check_password(user_data.password):
+        raise HTTPException(status_code=401, detail="Incorrect username or password")
     
     # Create access token
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": user.username}, expires_delta=access_token_expires
+        data={"sub": user.username},
+        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     
-    return Token(
-        access_token=access_token,
-        token_type="bearer",
-        user=user
-    )
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {"username": user.username, "id": user.id}
+    }
 
-@app.get("/auth/me", response_model=User)
+@app.get("/user/me", response_model=dict)
 async def get_current_user_info(current_user: User = Depends(get_current_user)):
-    """Get current user information"""
-    return current_user
+    return {"username": current_user.username, "id": current_user.id}
 
 @app.post("/analyze", response_model=AnalysisResponse)
-async def analyze_iac(
-    files: List[UploadFile] = File(...),
-    github_repo: Optional[str] = Form(None),
-    analysis_type: str = Form("comprehensive"),
-    current_user: User = Depends(get_current_user)
+async def analyze_infrastructure(
+    request: AnalysisRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
-    """
-    Analyze uploaded IaC files and return AI-generated optimization suggestions.
-    
-    Args:
-        files: List of uploaded Terraform/Ansible files
-        github_repo: Optional GitHub repository URL
-        analysis_type: Type of analysis (comprehensive, security, cost, naming)
-    
-    Returns:
-        AnalysisResponse with recommendations and refactored code
-    """
     try:
-        # Validate file types
-        allowed_extensions = {'.tf', '.tfvars', '.hcl', '.yml', '.yaml', '.ansible'}
-        for file in files:
-            file_ext = Path(file.filename).suffix.lower()
-            if file_ext not in allowed_extensions:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Unsupported file type: {file_ext}. Supported: {allowed_extensions}"
-                )
+        # Analyze the Terraform code
+        analysis_result = analyze_terraform(request.code)
         
-        # Save uploaded files to temporary directory
-        temp_dir = tempfile.mkdtemp()
-        file_paths = []
-        
-        for file in files:
-            file_path = os.path.join(temp_dir, file.filename)
-            async with aiofiles.open(file_path, 'wb') as f:
-                content = await file.read()
-                await f.write(content)
-            file_paths.append(file_path)
-        
-        # Initialize analyzer
-        analyzer = IACAnalyzer()
-        
-        # Perform analysis
-        analysis_result = await analyzer.analyze_files(
-            file_paths=file_paths,
-            analysis_type=analysis_type,
-            github_repo=github_repo
-        )
-        
-        # Save analysis to database
-        analysis_id = save_analysis(analysis_result)
-        
-        # Clean up temporary files
-        for file_path in file_paths:
-            if os.path.exists(file_path):
-                os.remove(file_path)
-        os.rmdir(temp_dir)
+        # Store analysis in database (you can implement this)
+        # For now, we'll just return the analysis result
         
         return AnalysisResponse(
-            analysis_id=analysis_id,
-            timestamp=datetime.now().isoformat(),
-            summary=analysis_result.summary,
-            recommendations=analysis_result.recommendations,
-            refactored_code=analysis_result.refactored_code,
-            security_issues=analysis_result.security_issues,
-            cost_optimizations=analysis_result.cost_optimizations,
-            naming_issues=analysis_result.naming_issues
+            analysis_id="analysis_" + str(datetime.now().timestamp()),
+            issues=analysis_result.get("issues", []),
+            recommendations=analysis_result.get("recommendations", []),
+            security_issues=analysis_result.get("security_issues", []),
+            cost_optimizations=analysis_result.get("cost_optimizations", [])
         )
-        
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/security/analyze")
+async def analyze_security_endpoint(
+    request: AnalysisRequest,
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        security_result = analyze_security(request.code)
+        return security_result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/github/create-automated-prs")
+async def create_prs_endpoint(
+    request: dict,
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        # Extract data from request
+        repo_url = request.get("repo_url")
+        analysis_results = request.get("analysis_results", {})
+        
+        if not repo_url:
+            raise HTTPException(status_code=400, detail="GitHub repository URL is required")
+        
+        # Create automated PRs
+        pr_result = create_automated_prs(repo_url, analysis_results)
+        return pr_result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/drift/detect")
+async def detect_drift_endpoint(
+    request: dict,
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        # Extract data from request
+        terraform_code = request.get("terraform_code")
+        cloud_provider = request.get("cloud_provider", "aws")
+        
+        if not terraform_code:
+            raise HTTPException(status_code=400, detail="Terraform code is required")
+        
+        # Detect drift
+        drift_result = detect_drift(terraform_code, cloud_provider)
+        return drift_result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/cloud/resources")
+async def get_cloud_resources_endpoint(
+    cloud_provider: str = "aws",
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        resources = get_cloud_resources(cloud_provider)
+        return resources
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/analyses")
+async def get_analyses(current_user: User = Depends(get_current_user)):
+    # Mock data - in a real app, you'd fetch from database
+    return [
+        {
+            "id": "analysis_1",
+            "timestamp": "2024-01-15T10:30:00Z",
+            "filename": "main.tf",
+            "issues_count": 5,
+            "status": "completed"
+        },
+        {
+            "id": "analysis_2", 
+            "timestamp": "2024-01-14T15:45:00Z",
+            "filename": "infrastructure.tf",
+            "issues_count": 3,
+            "status": "completed"
+        }
+    ]
 
 @app.get("/analysis/{analysis_id}")
-async def get_analysis(
-    analysis_id: str,
-    current_user: User = Depends(get_current_user)
-):
-    """Retrieve a specific analysis by ID"""
+async def get_analysis(analysis_id: str, current_user: User = Depends(get_current_user)):
+    # Mock data - in a real app, you'd fetch from database
+    return {
+        "id": analysis_id,
+        "timestamp": "2024-01-15T10:30:00Z",
+        "filename": "main.tf",
+        "issues": [
+            {
+                "type": "security",
+                "severity": "high",
+                "message": "S3 bucket is publicly accessible",
+                "line": 15,
+                "suggestion": "Add bucket policy to restrict access"
+            }
+        ],
+        "recommendations": [
+            "Use private subnets for sensitive resources",
+            "Enable VPC flow logs",
+            "Implement proper IAM roles"
+        ]
+    }
+
+@app.delete("/analyses/{analysis_id}")
+async def delete_analysis(analysis_id: str, current_user: User = Depends(get_current_user)):
+    # Mock deletion - in a real app, you'd delete from database
+    return {"message": f"Analysis {analysis_id} deleted successfully"}
+
+@app.get("/demo-files/{demo_type}")
+async def get_demo_file(demo_type: str):
+    """Serve demo files for AWS or Azure"""
     try:
-        conn = sqlite3.connect('inframorph.db')
-        cursor = conn.cursor()
+        if demo_type == "aws":
+            file_path = "Backend/demo_files/aws_demo.tf"
+        elif demo_type == "azure":
+            file_path = "Backend/demo_files/azure_demo.tf"
+        else:
+            raise HTTPException(status_code=400, detail="Invalid demo type. Use 'aws' or 'azure'")
         
-        cursor.execute("""
-            SELECT * FROM analyses WHERE id = ?
-        """, (analysis_id,))
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="Demo file not found")
         
-        result = cursor.fetchone()
-        conn.close()
+        with open(file_path, 'r') as file:
+            content = file.read()
         
-        if not result:
-            raise HTTPException(status_code=404, detail="Analysis not found")
-        
-        return {
-            "analysis_id": result[0],
-            "timestamp": result[1],
-            "summary": result[2],
-            "recommendations": json.loads(result[3]),
-            "refactored_code": json.loads(result[4]),
-            "security_issues": json.loads(result[5]),
-            "cost_optimizations": json.loads(result[6]),
-            "naming_issues": json.loads(result[7])
-        }
-        
+        return {"content": content, "filename": f"{demo_type}_demo.tf"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/github/status")
+async def get_github_status(current_user: User = Depends(get_current_user)):
+    # Mock GitHub connection status
+    return {"connected": False, "username": None}
 
 @app.post("/github/connect")
-async def connect_github_repo(
-    repo_url: str = Form(...),
+async def connect_github(
+    request: dict,
     current_user: User = Depends(get_current_user)
 ):
-    """Connect to a GitHub repository and analyze its IaC files"""
     try:
-        github_service = GitHubService()
-        files = await github_service.get_iac_files(repo_url)
+        token = request.get("token")
+        if not token:
+            raise HTTPException(status_code=400, detail="GitHub token is required")
         
-        return {
-            "message": "Successfully connected to GitHub repository",
-            "files_found": len(files),
-            "files": files
-        }
-        
+        # Mock GitHub connection
+        return {"connected": True, "username": "github_user"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/github/create-pr")
-async def create_pull_request(
-    analysis_id: str = Form(...),
-    repo_url: str = Form(...),
-    branch_name: str = Form(...),
+@app.post("/feedback")
+async def submit_feedback(
+    request: dict,
     current_user: User = Depends(get_current_user)
 ):
-    """Create a GitHub pull request with the suggested changes"""
     try:
-        # Get analysis results
-        conn = sqlite3.connect('inframorph.db')
-        cursor = conn.cursor()
-        cursor.execute("SELECT refactored_code FROM analyses WHERE id = ?", (analysis_id,))
-        result = cursor.fetchone()
-        conn.close()
+        feedback = request.get("feedback")
+        rating = request.get("rating")
         
-        if not result:
-            raise HTTPException(status_code=404, detail="Analysis not found")
+        if not feedback:
+            raise HTTPException(status_code=400, detail="Feedback is required")
         
-        refactored_code = json.loads(result[0])
-        
-        # Create PR
-        github_service = GitHubService()
-        pr_url = await github_service.create_pull_request(
-            repo_url=repo_url,
-            branch_name=branch_name,
-            changes=refactored_code
-        )
-        
-        return {
-            "message": "Pull request created successfully",
-            "pr_url": pr_url
-        }
-        
+        # Mock feedback submission
+        return {"message": "Feedback submitted successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

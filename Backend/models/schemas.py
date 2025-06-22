@@ -58,6 +58,7 @@ class AnalysisResponse(BaseModel):
     security_issues: List[SecurityIssue] = Field(default_factory=list)
     cost_optimizations: List[CostOptimization] = Field(default_factory=list)
     naming_issues: List[NamingIssue] = Field(default_factory=list)
+    github_repo: Optional[str] = Field(None, description="GitHub repository URL if analyzed from GitHub")
     
 class GitHubPRRequest(BaseModel):
     analysis_id: str = Field(..., description="Analysis ID to create PR for")
@@ -65,3 +66,27 @@ class GitHubPRRequest(BaseModel):
     branch_name: str = Field(..., description="Branch name for the PR")
     title: Optional[str] = Field(None, description="PR title")
     description: Optional[str] = Field(None, description="PR description") 
+
+class FeedbackCreate(BaseModel):
+    user_id: int
+    feedback_type: str  # 'general', 'bug', 'feature', 'analysis'
+    rating: Optional[int] = None  # 1-5 stars
+    title: str
+    description: str
+    category: Optional[str] = None  # 'ui', 'analysis', 'performance', etc.
+    metadata: Optional[Dict[str, Any]] = None
+
+class FeedbackResponse(BaseModel):
+    id: int
+    user_id: int
+    feedback_type: str
+    rating: Optional[int]
+    title: str
+    description: str
+    category: Optional[str]
+    metadata: Optional[Dict[str, Any]]
+    created_at: datetime
+    status: str  # 'open', 'in_progress', 'resolved', 'closed'
+
+    class Config:
+        from_attributes = True 

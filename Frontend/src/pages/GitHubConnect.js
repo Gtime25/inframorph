@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
 const GitHubConnect = ({ user, token }) => {
   const [repoUrl, setRepoUrl] = useState('');
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [connectedRepos, setConnectedRepos] = useState([]);
+  const navigate = useNavigate();
 
   const handleConnect = async (e) => {
     e.preventDefault();
@@ -50,6 +53,56 @@ const GitHubConnect = ({ user, token }) => {
       toast.error(error.message || 'Failed to connect to repository');
     } finally {
       setIsConnecting(false);
+    }
+  };
+
+  const handleAnalyze = async (repo) => {
+    if (!repo.files || repo.files.length === 0) {
+      toast.error('No files to analyze');
+      return;
+    }
+
+    setIsAnalyzing(true);
+    
+    try {
+      // Create a FormData with the repository URL for context
+      const formData = new FormData();
+      formData.append('github_repo', repo.url);
+      formData.append('analysis_type', 'comprehensive');
+
+      // Add the actual GitHub files for analysis
+      repo.files.forEach((file, index) => {
+        if (file.content) {
+          const fileBlob = new Blob([file.content], { type: 'text/plain' });
+          const fileObj = new File([fileBlob], file.name || `file_${index}.tf`, { type: 'text/plain' });
+          formData.append('files', fileObj);
+        }
+      });
+
+      const response = await fetch('http://localhost:8000/analyze', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Analysis failed');
+      }
+
+      const data = await response.json();
+      toast.success('Analysis completed successfully!');
+      
+      // Navigate to results page
+      navigate(`/results/${data.analysis_id}`);
+      
+    } catch (error) {
+      console.error('Analysis error:', error);
+      toast.error(error.message || 'Analysis failed. Please try again.');
+    } finally {
+      setIsAnalyzing(false);
     }
   };
 
@@ -134,8 +187,12 @@ const GitHubConnect = ({ user, token }) => {
                       </div>
                     </div>
                     <div className="flex space-x-2">
-                      <button className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200">
-                        Analyze
+                      <button 
+                        onClick={() => handleAnalyze(repo)}
+                        disabled={isAnalyzing}
+                        className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isAnalyzing ? 'Analyzing...' : 'Analyze'}
                       </button>
                       <button className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200">
                         View Files
@@ -149,7 +206,7 @@ const GitHubConnect = ({ user, token }) => {
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                         {repo.files.slice(0, 6).map((file, fileIndex) => (
                           <div key={fileIndex} className="text-xs bg-gray-50 px-2 py-1 rounded">
-                            {file}
+                            {file.name || file.path || JSON.stringify(file)}
                           </div>
                         ))}
                         {repo.files.length > 6 && (

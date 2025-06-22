@@ -8,14 +8,20 @@ from github.Repository import Repository
 from github.Branch import Branch
 from github.PullRequest import PullRequest
 import base64
+from datetime import datetime
 
 class GitHubService:
     def __init__(self):
         self.github_token = os.getenv("GITHUB_TOKEN")
         if not self.github_token:
-            raise ValueError("GITHUB_TOKEN environment variable is required")
+            raise ValueError("GITHUB_TOKEN environment variable is required. Please set your GitHub personal access token in the .env file.")
         
-        self.github = Github(self.github_token)
+        try:
+            self.github = Github(self.github_token)
+            # Test the token by getting the authenticated user
+            self.github.get_user()
+        except Exception as e:
+            raise ValueError(f"Invalid or expired GitHub token: {str(e)}. Please check your GITHUB_TOKEN in the .env file.")
     
     async def get_iac_files(self, repo_url: str) -> List[Dict[str, Any]]:
         """Get IaC files from a GitHub repository"""
@@ -238,3 +244,461 @@ After merging this PR:
             
         except Exception:
             return False 
+    
+    async def create_automated_prs(
+        self, 
+        repo_url: str, 
+        analysis_results: Dict[str, Any],
+        create_separate_prs: bool = True
+    ) -> List[Dict[str, Any]]:
+        """
+        Create automated pull requests based on analysis results.
+        
+        Args:
+            repo_url: GitHub repository URL
+            analysis_results: Results from the analysis
+            create_separate_prs: Whether to create separate PRs for different categories
+            
+        Returns:
+            List of created PR information
+        """
+        try:
+            owner, repo_name = self._parse_github_url(repo_url)
+            repo = self.github.get_repo(f"{owner}/{repo_name}")
+            
+            prs_created = []
+            
+            # Debug: Check what we have in analysis_results
+            print(f"Debug - Analysis results keys: {list(analysis_results.keys())}")
+            print(f"Debug - Security issues: {len(analysis_results.get('security_issues', []))}")
+            print(f"Debug - Cost optimizations: {len(analysis_results.get('cost_optimizations', []))}")
+            print(f"Debug - Recommendations: {len(analysis_results.get('recommendations', []))}")
+            print(f"Debug - Naming issues: {len(analysis_results.get('naming_issues', []))}")
+            print(f"Debug - Refactored code: {len(analysis_results.get('refactored_code', []))}")
+            
+            if create_separate_prs:
+                # Create separate PRs for different categories
+                categories = {
+                    'security': {
+                        'title': '🔒 Security Fixes',
+                        'description': 'Critical security vulnerabilities and fixes',
+                        'issues': analysis_results.get('security_issues', []),
+                        'priority': 'high'
+                    },
+                    'cost': {
+                        'title': '💰 Cost Optimizations',
+                        'description': 'Cost optimization opportunities',
+                        'issues': analysis_results.get('cost_optimizations', []),
+                        'priority': 'medium'
+                    },
+                    'best_practices': {
+                        'title': '📋 Best Practices',
+                        'description': 'Infrastructure best practices and improvements',
+                        'issues': analysis_results.get('recommendations', []),
+                        'priority': 'medium'
+                    },
+                    'naming': {
+                        'title': '🏷️ Naming Conventions',
+                        'description': 'Naming convention improvements',
+                        'issues': analysis_results.get('naming_issues', []),
+                        'priority': 'low'
+                    }
+                }
+                
+                for category, config in categories.items():
+                    print(f"Debug - Processing category {category} with {len(config['issues'])} issues")
+                    if config['issues']:
+                        pr_info = await self._create_category_pr(
+                            repo, category, config, analysis_results
+                        )
+                        if pr_info:
+                            prs_created.append(pr_info)
+                        else:
+                            print(f"Debug - No PR created for category {category}")
+                    else:
+                        print(f"Debug - No issues found for category {category}")
+            else:
+                # Create one comprehensive PR
+                pr_info = await self._create_comprehensive_pr(
+                    repo, analysis_results
+                )
+                if pr_info:
+                    prs_created.append(pr_info)
+                else:
+                    print("Debug - No comprehensive PR created")
+            
+            print(f"Debug - Total PRs created: {len(prs_created)}")
+            return prs_created
+            
+        except Exception as e:
+            raise Exception(f"Error creating automated PRs: {str(e)}")
+    
+    async def _create_category_pr(
+        self, 
+        repo, 
+        category: str, 
+        config: Dict[str, Any], 
+        analysis_results: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Create a PR for a specific category of issues"""
+        try:
+            print(f"Debug - Creating PR for category: {category}")
+            
+            # Generate branch name
+            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            branch_name = f"inframorph-{category}-{timestamp}"
+            
+            # Create branch
+            base_branch = repo.default_branch
+            base_ref = repo.get_branch(base_branch)
+            repo.create_git_ref(f"refs/heads/{branch_name}", base_ref.commit.sha)
+            
+            # Apply changes for this category
+            changes_applied = []
+            refactored_files = analysis_results.get('refactored_code', [])
+            
+            print(f"Debug - Found {len(refactored_files)} refactored files")
+            
+            for file_info in refactored_files:
+                file_path = file_info.get('file_path')
+                print(f"Debug - Processing file: {file_path}")
+                if file_path and self._should_apply_changes(file_path, category, config['issues']):
+                    try:
+                        # Try to get current file content
+                        try:
+                            file_content = repo.get_contents(file_path, ref=branch_name)
+                            file_exists = True
+                        except Exception as e:
+                            if "404" in str(e):
+                                print(f"Debug - File {file_path} doesn't exist, will create it")
+                                file_exists = False
+                            else:
+                                raise e
+                        
+                        if file_exists:
+                            # Update existing file
+                            repo.update_file(
+                                path=file_path,
+                                message=f"InfraMorph {category}: {file_info.get('changes_summary', 'Improvements')}",
+                                content=file_info.get('refactored_content', ''),
+                                sha=file_content.sha,
+                                branch=branch_name
+                            )
+                        else:
+                            # Create new file
+                            repo.create_file(
+                                path=file_path,
+                                message=f"InfraMorph {category}: {file_info.get('changes_summary', 'Create new file with improvements')}",
+                                content=file_info.get('refactored_content', ''),
+                                branch=branch_name
+                            )
+                        
+                        changes_applied.append({
+                            'file_path': file_path,
+                            'changes_summary': file_info.get('changes_summary', 'Improvements')
+                        })
+                        
+                        print(f"Debug - Successfully {'updated' if file_exists else 'created'} file: {file_path}")
+                        
+                    except Exception as e:
+                        print(f"Error updating file {file_path}: {e}")
+                else:
+                    print(f"Debug - Skipping file {file_path} (should_apply_changes returned False)")
+            
+            print(f"Debug - Changes applied: {len(changes_applied)}")
+            
+            if not changes_applied:
+                print(f"Debug - No changes applied for category {category}, returning None")
+                return None  # No changes to apply
+            
+            # Create PR
+            pr_title = f"InfraMorph: {config['title']}"
+            pr_body = self._create_category_pr_description(
+                category, config, changes_applied, analysis_results
+            )
+            
+            # Add labels based on priority
+            labels = [f"inframorph-{category}", f"priority-{config['priority']}"]
+            
+            pr = repo.create_pull(
+                title=pr_title,
+                body=pr_body,
+                base=base_branch,
+                head=branch_name
+            )
+            
+            # Add labels
+            pr.add_to_labels(*labels)
+            
+            print(f"Debug - Successfully created PR: {pr.html_url}")
+            
+            return {
+                'pr_url': pr.html_url,
+                'pr_number': pr.number,
+                'title': pr_title,
+                'category': category,
+                'priority': config['priority'],
+                'changes_count': len(changes_applied),
+                'branch_name': branch_name
+            }
+            
+        except Exception as e:
+            print(f"Error creating category PR for {category}: {e}")
+            return None
+    
+    async def _create_comprehensive_pr(
+        self, 
+        repo, 
+        analysis_results: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Create one comprehensive PR with all changes"""
+        try:
+            # Generate branch name
+            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            branch_name = f"inframorph-comprehensive-{timestamp}"
+            
+            # Create branch
+            base_branch = repo.default_branch
+            base_ref = repo.get_branch(base_branch)
+            repo.create_git_ref(f"refs/heads/{branch_name}", base_ref.commit.sha)
+            
+            # Apply all changes
+            changes_applied = []
+            refactored_files = analysis_results.get('refactored_code', [])
+            
+            for file_info in refactored_files:
+                file_path = file_info.get('file_path')
+                if file_path:
+                    try:
+                        # Try to get current file content
+                        try:
+                            file_content = repo.get_contents(file_path, ref=branch_name)
+                            file_exists = True
+                        except Exception as e:
+                            if "404" in str(e):
+                                print(f"Debug - File {file_path} doesn't exist, will create it")
+                                file_exists = False
+                            else:
+                                raise e
+                        
+                        if file_exists:
+                            # Update existing file
+                            repo.update_file(
+                                path=file_path,
+                                message=f"InfraMorph comprehensive: {file_info.get('changes_summary', 'Improvements')}",
+                                content=file_info.get('refactored_content', ''),
+                                sha=file_content.sha,
+                                branch=branch_name
+                            )
+                        else:
+                            # Create new file
+                            repo.create_file(
+                                path=file_path,
+                                message=f"InfraMorph comprehensive: {file_info.get('changes_summary', 'Create new file with improvements')}",
+                                content=file_info.get('refactored_content', ''),
+                                branch=branch_name
+                            )
+                        
+                        changes_applied.append({
+                            'file_path': file_path,
+                            'changes_summary': file_info.get('changes_summary', 'Improvements')
+                        })
+                        
+                        print(f"Debug - Successfully {'updated' if file_exists else 'created'} file: {file_path}")
+                        
+                    except Exception as e:
+                        print(f"Error updating file {file_path}: {e}")
+            
+            if not changes_applied:
+                return None  # No changes to apply
+            
+            # Create PR
+            pr_title = "InfraMorph: Comprehensive Infrastructure Optimization"
+            pr_body = self._create_comprehensive_pr_description(
+                changes_applied, analysis_results
+            )
+            
+            # Add labels
+            labels = ["inframorph-comprehensive", "priority-high"]
+            
+            pr = repo.create_pull(
+                title=pr_title,
+                body=pr_body,
+                base=base_branch,
+                head=branch_name
+            )
+            
+            # Add labels
+            pr.add_to_labels(*labels)
+            
+            return {
+                'pr_url': pr.html_url,
+                'pr_number': pr.number,
+                'title': pr_title,
+                'category': 'comprehensive',
+                'priority': 'high',
+                'changes_count': len(changes_applied),
+                'branch_name': branch_name
+            }
+            
+        except Exception as e:
+            print(f"Error creating comprehensive PR: {e}")
+            return None
+    
+    def _should_apply_changes(self, file_path: str, category: str, issues: List[Dict]) -> bool:
+        """Determine if changes should be applied to a file based on category and issues"""
+        # This is a simplified logic - in a real implementation, you'd have more sophisticated
+        # mapping between issues and files
+        return True  # For now, apply all changes
+    
+    def _create_category_pr_description(
+        self, 
+        category: str, 
+        config: Dict[str, Any], 
+        changes_applied: List[Dict], 
+        analysis_results: Dict[str, Any]
+    ) -> str:
+        """Create detailed PR description for a specific category"""
+        
+        category_icons = {
+            'security': '🔒',
+            'cost': '💰',
+            'best_practices': '📋',
+            'naming': '🏷️'
+        }
+        
+        icon = category_icons.get(category, '📝')
+        
+        description = f"""# {icon} InfraMorph: {config['title']}
+
+{config['description']}
+
+## 📊 Analysis Summary
+
+This PR addresses **{len(config['issues'])} issues** identified by InfraMorph's AI analysis.
+
+## 🔧 Changes Applied
+
+"""
+        
+        for change in changes_applied:
+            description += f"### {change['file_path']}\n"
+            description += f"- **Summary**: {change['changes_summary']}\n\n"
+        
+        description += f"""## 📋 Detailed Issues
+
+"""
+        
+        for i, issue in enumerate(config['issues'][:5], 1):  # Show first 5 issues
+            if category == 'security':
+                description += f"### {i}. {issue.get('title', 'Security Issue')}\n"
+                description += f"- **Severity**: {issue.get('severity', 'Unknown')}\n"
+                description += f"- **Description**: {issue.get('description', 'No description')}\n"
+                description += f"- **Recommendation**: {issue.get('recommendation', 'No recommendation')}\n\n"
+            elif category == 'cost':
+                description += f"### {i}. {issue.get('resource_type', 'Cost Optimization')}\n"
+                description += f"- **Current Cost**: {issue.get('current_cost', 'Unknown')}\n"
+                description += f"- **Potential Savings**: {issue.get('potential_savings', 'Unknown')}\n"
+                description += f"- **Recommendation**: {issue.get('recommendation', 'No recommendation')}\n\n"
+            elif category == 'best_practices':
+                description += f"### {i}. {issue.get('title', 'Best Practice')}\n"
+                description += f"- **Priority**: {issue.get('priority', 'Unknown')}\n"
+                description += f"- **Description**: {issue.get('description', 'No description')}\n"
+                description += f"- **Impact**: {issue.get('impact', 'No impact specified')}\n\n"
+            elif category == 'naming':
+                description += f"### {i}. {issue.get('issue_type', 'Naming Issue')}\n"
+                description += f"- **Current**: `{issue.get('current_name', 'Unknown')}`\n"
+                description += f"- **Suggested**: `{issue.get('suggested_name', 'Unknown')}`\n"
+                description += f"- **Reason**: {issue.get('reason', 'No reason specified')}\n\n"
+        
+        if len(config['issues']) > 5:
+            description += f"*... and {len(config['issues']) - 5} more issues*\n\n"
+        
+        description += f"""## 🚀 Next Steps
+
+1. **Review Changes**: Carefully review each modification
+2. **Test**: Deploy to a staging environment first
+3. **Monitor**: Watch for any issues after deployment
+4. **Iterate**: Use feedback to improve future analyses
+
+## 📈 Impact Assessment
+
+- **Risk Level**: {config['priority'].title()}
+- **Estimated Time**: 15-30 minutes to review
+- **Rollback**: Easy - all changes are in separate branch
+
+---
+*Generated by InfraMorph - AI-powered infrastructure optimization tool*
+"""
+        
+        return description
+    
+    def _create_comprehensive_pr_description(
+        self, 
+        changes_applied: List[Dict], 
+        analysis_results: Dict[str, Any]
+    ) -> str:
+        """Create comprehensive PR description with all changes"""
+        
+        description = """# 🚀 InfraMorph: Comprehensive Infrastructure Optimization
+
+This pull request contains a comprehensive set of improvements for your infrastructure code, addressing security, cost, best practices, and naming conventions.
+
+## 📊 Analysis Overview
+
+"""
+        
+        # Add summary statistics
+        security_count = len(analysis_results.get('security_issues', []))
+        cost_count = len(analysis_results.get('cost_optimizations', []))
+        recommendations_count = len(analysis_results.get('recommendations', []))
+        naming_count = len(analysis_results.get('naming_issues', []))
+        
+        description += f"""
+- 🔒 **Security Issues**: {security_count} vulnerabilities addressed
+- 💰 **Cost Optimizations**: {cost_count} opportunities identified
+- 📋 **Best Practices**: {recommendations_count} improvements suggested
+- 🏷️ **Naming Issues**: {naming_count} convention improvements
+
+## 🔧 Changes Applied
+
+"""
+        
+        for change in changes_applied:
+            description += f"### {change['file_path']}\n"
+            description += f"- **Summary**: {change['changes_summary']}\n\n"
+        
+        description += """## 🎯 Priority Categories
+
+### 🔒 Security (High Priority)
+Critical security vulnerabilities and misconfigurations that should be addressed immediately.
+
+### 💰 Cost Optimization (Medium Priority)
+Opportunities to reduce infrastructure costs without impacting performance.
+
+### 📋 Best Practices (Medium Priority)
+Architectural improvements and best practice implementations.
+
+### 🏷️ Naming Conventions (Low Priority)
+Consistency improvements for better resource management.
+
+## 🚀 Implementation Guide
+
+1. **Review**: Go through each change carefully
+2. **Test**: Deploy to staging environment
+3. **Validate**: Ensure all functionality works as expected
+4. **Deploy**: Apply to production during maintenance window
+5. **Monitor**: Watch for any issues post-deployment
+
+## 📈 Expected Benefits
+
+- **Security**: Reduced attack surface and compliance improvements
+- **Cost**: Potential 10-30% cost savings
+- **Maintainability**: Better code organization and consistency
+- **Performance**: Optimized resource configurations
+
+---
+*Generated by InfraMorph - AI-powered infrastructure optimization tool*
+"""
+        
+        return description 

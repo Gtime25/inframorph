@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useCallback, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useDropzone } from 'react-dropzone';
 import toast from 'react-hot-toast';
 import { 
@@ -13,10 +13,48 @@ import {
 
 const Analysis = ({ user, token }) => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [files, setFiles] = useState([]);
   const [analysisType, setAnalysisType] = useState('comprehensive');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [githubRepo, setGithubRepo] = useState('');
+  const [loadingDemo, setLoadingDemo] = useState(false);
+
+  // Check for demo parameter and load demo file
+  useEffect(() => {
+    const demoType = searchParams.get('demo');
+    if (demoType && (demoType === 'aws' || demoType === 'azure')) {
+      loadDemoFile(demoType);
+    }
+  }, [searchParams]);
+
+  const loadDemoFile = async (demoType) => {
+    setLoadingDemo(true);
+    try {
+      const response = await fetch(`http://localhost:8000/demo-files/${demoType}`);
+      if (!response.ok) {
+        throw new Error('Failed to load demo file');
+      }
+      
+      const data = await response.json();
+      
+      // Create a File object from the demo content
+      const demoFile = new File(
+        [data.content], 
+        data.filename, 
+        { type: 'text/plain' }
+      );
+      
+      setFiles([demoFile]);
+      toast.success(`${demoType.toUpperCase()} demo file loaded successfully!`);
+      
+    } catch (error) {
+      console.error('Error loading demo file:', error);
+      toast.error('Failed to load demo file. Please try again.');
+    } finally {
+      setLoadingDemo(false);
+    }
+  };
 
   const onDrop = useCallback((acceptedFiles) => {
     const validFiles = acceptedFiles.filter(file => {
@@ -45,6 +83,11 @@ const Analysis = ({ user, token }) => {
 
   const removeFile = (index) => {
     setFiles(files.filter((_, i) => i !== index));
+  };
+
+  const clearDemoFiles = () => {
+    setFiles([]);
+    toast.success('Demo files cleared. You can now upload your own files.');
   };
 
   const handleAnalyze = async () => {
@@ -131,29 +174,36 @@ const Analysis = ({ user, token }) => {
         <div className="bg-white shadow rounded-lg p-6 mb-6">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Upload Files</h2>
           
-          <div
-            {...getRootProps()}
-            className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors duration-200 ${
-              isDragActive
-                ? 'border-blue-500 bg-blue-50'
-                : 'border-gray-300 hover:border-blue-400 hover:bg-gray-50'
-            }`}
-          >
-            <input {...getInputProps()} />
-            <CloudArrowUpIcon className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-            {isDragActive ? (
-              <p className="text-blue-600 font-medium">Drop the files here...</p>
-            ) : (
-              <div>
-                <p className="text-gray-600 mb-2">
-                  Drag & drop files here, or <span className="text-blue-600 font-medium">click to select</span>
-                </p>
-                <p className="text-sm text-gray-500">
-                  Supports: .tf, .tfvars, .hcl, .yml, .yaml, .ansible
-                </p>
-              </div>
-            )}
-          </div>
+          {loadingDemo ? (
+            <div className="border-2 border-dashed border-blue-300 rounded-lg p-8 text-center bg-blue-50">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+              <p className="text-blue-600 font-medium">Loading demo file...</p>
+            </div>
+          ) : (
+            <div
+              {...getRootProps()}
+              className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors duration-200 ${
+                isDragActive
+                  ? 'border-blue-500 bg-blue-50'
+                  : 'border-gray-300 hover:border-blue-400 hover:bg-gray-50'
+              }`}
+            >
+              <input {...getInputProps()} />
+              <CloudArrowUpIcon className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+              {isDragActive ? (
+                <p className="text-blue-600 font-medium">Drop the files here...</p>
+              ) : (
+                <div>
+                  <p className="text-gray-600 mb-2">
+                    Drag & drop files here, or <span className="text-blue-600 font-medium">click to select</span>
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    Supports: .tf, .tfvars, .hcl, .yml, .yaml, .ansible
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* File List */}
           {files.length > 0 && (
@@ -168,7 +218,14 @@ const Analysis = ({ user, token }) => {
                     <div className="flex items-center space-x-3">
                       <DocumentTextIcon className="w-5 h-5 text-gray-400" />
                       <div>
-                        <p className="font-medium text-gray-900">{file.name}</p>
+                        <div className="flex items-center space-x-2">
+                          <p className="font-medium text-gray-900">{file.name}</p>
+                          {file.name.includes('demo') && (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                              Demo File
+                            </span>
+                          )}
+                        </div>
                         <p className="text-sm text-gray-500">
                           {(file.size / 1024).toFixed(1)} KB
                         </p>
@@ -188,6 +245,38 @@ const Analysis = ({ user, token }) => {
             </div>
           )}
         </div>
+
+        {/* Demo File Info */}
+        {files.length > 0 && files[0].name.includes('demo') && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+            <div className="flex items-start justify-between">
+              <div className="flex items-start">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <h3 className="text-sm font-medium text-blue-800">
+                    Demo File Loaded
+                  </h3>
+                  <div className="mt-2 text-sm text-blue-700">
+                    <p>
+                      This is a sample infrastructure file with common security, cost, and best practice issues. 
+                      You can analyze it to see how InfraMorph identifies and suggests improvements for various problems.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={clearDemoFiles}
+                className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+              >
+                Clear Demo Files
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Analysis Type Selection */}
         <div className="bg-white shadow rounded-lg p-6 mb-6">

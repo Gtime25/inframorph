@@ -1,62 +1,67 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import './App.css';
-
-// Components
+import { Toaster } from 'react-hot-toast';
 import Header from './components/Header';
-import ProtectedRoute from './components/ProtectedRoute';
-
-// Pages
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Dashboard from './pages/Dashboard';
 import Analysis from './pages/Analysis';
+import Results from './pages/Results';
 import GitHubConnect from './pages/GitHubConnect';
+import DriftDetection from './pages/DriftDetection';
+import SecurityAnalysis from './pages/SecurityAnalysis';
+import ProtectedRoute from './components/ProtectedRoute';
+import Onboarding from './components/Onboarding';
+import './App.css';
 
 function App() {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   useEffect(() => {
-    // Check for existing authentication on app load
-    const storedToken = localStorage.getItem('token');
-    const storedUser = localStorage.getItem('user');
-
-    if (storedToken && storedUser) {
-      try {
-        const userData = JSON.parse(storedUser);
-        setToken(storedToken);
-        setUser(userData);
-        setIsAuthenticated(true);
-      } catch (error) {
-        console.error('Error parsing stored user data:', error);
-        // Clear invalid data
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-      }
+    // Check for existing session
+    const savedToken = localStorage.getItem('token');
+    const savedUser = localStorage.getItem('user');
+    
+    if (savedToken && savedUser) {
+      setToken(savedToken);
+      setUser(JSON.parse(savedUser));
     }
+    
     setLoading(false);
   }, []);
 
-  const handleLogin = (userData, accessToken) => {
+  const handleLogin = (userData, userToken) => {
     setUser(userData);
-    setToken(accessToken);
-    setIsAuthenticated(true);
+    setToken(userToken);
+    localStorage.setItem('token', userToken);
+    localStorage.setItem('user', JSON.stringify(userData));
   };
 
   const handleLogout = () => {
     setUser(null);
     setToken(null);
-    setIsAuthenticated(false);
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
   };
 
-  // Show loading spinner while checking authentication
+  const handleShowOnboarding = () => {
+    setShowOnboarding(true);
+  };
+
+  const handleCloseOnboarding = () => {
+    setShowOnboarding(false);
+  };
+
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-indigo-600"></div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading InfraMorph...</p>
+        </div>
       </div>
     );
   }
@@ -64,70 +69,100 @@ function App() {
   return (
     <Router>
       <div className="App">
-        {isAuthenticated && <Header user={user} onLogout={handleLogout} />}
+        <Toaster position="top-right" />
+        
+        {showOnboarding && (
+          <Onboarding onClose={handleCloseOnboarding} />
+        )}
+        
+        <Header 
+          user={user} 
+          onLogout={handleLogout} 
+          onShowOnboarding={handleShowOnboarding}
+        />
         
         <Routes>
-          {/* Public routes */}
           <Route 
-            path="/login" 
+            path="/" 
             element={
-              isAuthenticated ? 
-                <Navigate to="/dashboard" replace /> : 
-                <Login onLogin={handleLogin} />
-            } 
-          />
-          <Route 
-            path="/signup" 
-            element={
-              isAuthenticated ? 
-                <Navigate to="/dashboard" replace /> : 
-                <Signup onLogin={handleLogin} />
+              user ? <Navigate to="/dashboard" /> : <Navigate to="/login" />
             } 
           />
           
-          {/* Protected routes */}
+          <Route 
+            path="/login" 
+            element={
+              user ? <Navigate to="/dashboard" /> : <Login onLogin={handleLogin} />
+            } 
+          />
+          
+          <Route 
+            path="/signup" 
+            element={
+              user ? <Navigate to="/dashboard" /> : <Signup onLogin={handleLogin} />
+            } 
+          />
+          
           <Route 
             path="/dashboard" 
             element={
-              <ProtectedRoute isAuthenticated={isAuthenticated}>
+              <ProtectedRoute user={user}>
                 <Dashboard user={user} token={token} />
               </ProtectedRoute>
             } 
           />
+          
           <Route 
             path="/analysis" 
             element={
-              <ProtectedRoute isAuthenticated={isAuthenticated}>
+              <ProtectedRoute user={user}>
                 <Analysis user={user} token={token} />
               </ProtectedRoute>
             } 
           />
+          
+          <Route 
+            path="/analysis/:analysisId" 
+            element={
+              <ProtectedRoute user={user}>
+                <Results user={user} token={token} />
+              </ProtectedRoute>
+            } 
+          />
+          
+          <Route 
+            path="/results/:analysisId" 
+            element={
+              <ProtectedRoute user={user}>
+                <Results user={user} token={token} />
+              </ProtectedRoute>
+            } 
+          />
+          
           <Route 
             path="/github-connect" 
             element={
-              <ProtectedRoute isAuthenticated={isAuthenticated}>
+              <ProtectedRoute user={user}>
                 <GitHubConnect user={user} token={token} />
               </ProtectedRoute>
             } 
           />
           
-          {/* Default redirect */}
           <Route 
-            path="/" 
+            path="/drift-detection" 
             element={
-              isAuthenticated ? 
-                <Navigate to="/dashboard" replace /> : 
-                <Navigate to="/login" replace />
+              <ProtectedRoute user={user}>
+                <DriftDetection user={user} token={token} />
+              </ProtectedRoute>
             } 
           />
           
-          {/* Catch all route */}
           <Route 
-            path="*" 
+            path="/security-analysis" 
             element={
-              isAuthenticated ? 
-                <Navigate to="/dashboard" replace /> : 
-                <Navigate to="/login" replace />
+              <ProtectedRoute user={user}>
+                <SecurityAnalysis user={user} token={token} />
+              </ProtectedRoute>
             } 
           />
         </Routes>

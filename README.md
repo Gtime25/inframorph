@@ -1,174 +1,191 @@
 # InfraMorph - AI-Powered Infrastructure Optimization
 
-InfraMorph is an AI-powered infrastructure optimization tool for DevOps engineers. It analyzes Terraform and Ansible code to identify unused resources, security misconfigurations, inconsistent naming, and cost-saving opportunities, then generates AI-refactored code snippets and GitHub pull requests.
+InfraMorph is an intelligent infrastructure optimization platform that analyzes Terraform and Ansible code to identify security vulnerabilities, cost optimization opportunities, and best practice improvements, then generates automated pull requests with AI-refactored code.
 
-## Features
+## 🚀 Features
 
-- 🔐 **User Authentication**: Secure login/signup system with JWT tokens
-- 🤖 **AI-Powered Analysis**: Uses OpenAI GPT-4 for intelligent infrastructure analysis
-- 🔒 **Security Scanning**: Identifies security vulnerabilities and misconfigurations
-- 💰 **Cost Optimization**: Finds opportunities to reduce cloud infrastructure costs
-- 📝 **Code Quality**: Analyzes naming conventions and best practices
-- 🔄 **Auto Refactoring**: Generates improved code with suggested changes
-- 🔗 **GitHub Integration**: Connect repositories and create pull requests
-- 📊 **Comprehensive Reports**: Detailed analysis with actionable recommendations
+### Core Analysis
+- **Security Analysis**: Detect vulnerabilities, misconfigurations, and compliance issues
+- **Cost Optimization**: Identify resource sizing and efficiency improvements
+- **Best Practices**: Architectural improvements and consistency checks
+- **Naming Conventions**: Standardize resource naming and tagging
 
-## Tech Stack
+### Advanced Features
+- **Automated PR Creation**: Generate categorized pull requests with improvements
+- **GitHub Integration**: Connect repositories and analyze existing code
+- **Multi-Cloud Support**: AWS, Azure, and GCP resource analysis
+- **Drift Detection**: Compare code vs deployed infrastructure
+- **Security Scoring**: Comprehensive security assessment with compliance frameworks
 
-### Backend
-- **FastAPI**: Modern Python web framework
-- **SQLite**: Lightweight database for user data and analysis history
-- **OpenAI GPT-4**: AI analysis engine
-- **JWT**: Secure authentication tokens
-- **bcrypt**: Password hashing
-- **PyGithub**: GitHub API integration
-
-### Frontend
-- **React**: Modern JavaScript framework
-- **Tailwind CSS**: Utility-first CSS framework
-- **React Router**: Client-side routing
-- **React Dropzone**: File upload functionality
-- **React Hot Toast**: Toast notifications
-
-## Quick Start
+## 🛠️ Quick Start
 
 ### Prerequisites
 - Python 3.8+
 - Node.js 16+
-- OpenAI API key (optional - will use mock data if not provided)
+- GitHub Personal Access Token
+- OpenAI API Key
 
 ### Backend Setup
+```bash
+cd Backend
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
 
-1. **Navigate to backend directory:**
-   ```bash
-   cd Backend
-   ```
-
-2. **Create virtual environment:**
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-3. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Set up environment variables:**
-   ```bash
-   cp env.example .env
-   # Edit .env and add your OpenAI API key (optional)
-   ```
-
-5. **Start the backend server:**
-   ```bash
-   uvicorn main:app --reload --host 0.0.0.0 --port 8000
-   ```
+# Set up environment variables
+cp env.example .env
+# Edit .env with your API keys
+```
 
 ### Frontend Setup
+```bash
+cd Frontend
+npm install
+npm start
+```
 
-1. **Navigate to frontend directory:**
-   ```bash
-   cd Frontend
-   ```
+### Environment Variables
+Create a `.env` file in the Backend directory:
+```env
+OPENAI_API_KEY=your_openai_api_key_here
+GITHUB_TOKEN=your_github_personal_access_token_here
+SECRET_KEY=your_secret_key_here
+```
 
-2. **Install dependencies:**
-   ```bash
-   npm install
-   ```
+## 📖 Usage Guide
 
-3. **Start the development server:**
-   ```bash
-   npm start
-   ```
+### 1. Authentication
+- Sign up with username and password
+- No email verification required for pilot
 
-4. **Open your browser:**
-   Navigate to `http://localhost:3000`
+### 2. Analysis Workflow
+1. **Upload Files**: Upload Terraform/Ansible files directly
+2. **Connect GitHub**: Or connect to existing GitHub repository
+3. **Run Analysis**: AI analyzes code for issues and improvements
+4. **Review Results**: View detailed analysis with recommendations
+5. **Create PRs**: Generate automated pull requests with fixes
 
-## Authentication System
+### 3. GitHub Integration
+- Connect your repository for seamless analysis
+- Automated PR creation with categorized improvements
+- Support for both existing and new files
 
-InfraMorph now includes a complete authentication system:
-
-### Features
-- **User Registration**: Create new accounts with username/password
-- **User Login**: Secure authentication with JWT tokens
-- **Protected Routes**: All analysis features require authentication
-- **Session Management**: Automatic token refresh and logout
-- **Password Security**: Bcrypt hashing for secure password storage
-
-### How to Use
-
-1. **First Time Users:**
-   - Navigate to the signup page
-   - Create a username and password
-   - Optionally provide an email address
-   - You'll be automatically logged in after signup
-
-2. **Returning Users:**
-   - Use your username and password to log in
-   - Your session will be maintained across browser sessions
-   - Use the logout button to end your session
-
-3. **Protected Features:**
-   - File analysis requires authentication
-   - GitHub integration requires authentication
-   - All analysis history is tied to your user account
-
-## API Endpoints
+## 🔧 API Endpoints
 
 ### Authentication
-- `POST /auth/signup` - Create new user account
-- `POST /auth/login` - Authenticate user
+- `POST /auth/signup` - User registration
+- `POST /auth/login` - User login
 - `GET /auth/me` - Get current user info
 
 ### Analysis
-- `POST /analyze` - Analyze uploaded IaC files (requires auth)
-- `GET /analysis/{id}` - Get specific analysis results (requires auth)
+- `POST /analyze` - Analyze IaC files
+- `GET /analysis/{id}` - Get analysis results
+- `GET /analyses` - List all analyses
 
 ### GitHub Integration
-- `POST /github/connect` - Connect to GitHub repository (requires auth)
-- `POST /github/create-pr` - Create pull request (requires auth)
+- `POST /github/connect` - Connect GitHub repository
+- `POST /github/create-automated-prs` - Create pull requests
+- `GET /github/status` - Check GitHub configuration
 
-## Environment Variables
+### Advanced Features
+- `POST /drift/detect` - Detect infrastructure drift
+- `POST /security/analyze` - Security analysis
+- `GET /cloud/resources/{provider}` - Cloud resource discovery
 
-Create a `.env` file in the Backend directory:
+## 🏗️ Architecture
 
-```env
-# OpenAI API (optional - will use mock data if not provided)
-OPENAI_API_KEY=your_openai_api_key_here
+### Backend (FastAPI)
+- **Authentication**: JWT-based with bcrypt
+- **Database**: SQLite with SQLAlchemy ORM
+- **AI Integration**: OpenAI GPT-4 for analysis
+- **GitHub API**: PyGithub for repository operations
+- **Rate Limiting**: Built-in rate limiting middleware
 
-# GitHub Personal Access Token (optional)
-GITHUB_TOKEN=your_github_token_here
+### Frontend (React)
+- **UI Framework**: React with Tailwind CSS
+- **State Management**: React hooks and context
+- **Routing**: React Router with protected routes
+- **Notifications**: React Hot Toast for user feedback
 
-# JWT Secret (change in production!)
-JWT_SECRET_KEY=your-secret-key-change-in-production
+## 🔒 Security Features
+
+- JWT authentication with secure token storage
+- Rate limiting to prevent abuse
+- Input validation and sanitization
+- Secure API key management
+- CORS configuration for frontend-backend communication
+
+## 📊 Pilot Metrics
+
+Track these key metrics during pilot:
+- **Analysis Success Rate**: % of successful analyses
+- **PR Creation Rate**: % of analyses that generate PRs
+- **User Engagement**: Time spent in analysis workflow
+- **Issue Detection**: Number of issues found per analysis
+- **User Feedback**: Satisfaction scores and feature requests
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+1. **GitHub Token Issues**
+   - Ensure token has `repo` and `workflow` scopes
+   - Check token expiration (24-hour default)
+   - Verify repository access permissions
+
+2. **Analysis Failures**
+   - Check OpenAI API key configuration
+   - Verify file format (Terraform/Ansible)
+   - Check file size limits
+
+3. **PR Creation Issues**
+   - Ensure repository exists and is accessible
+   - Check branch permissions
+   - Verify file paths in analysis results
+
+### Debug Mode
+Enable debug logging in backend console to see detailed error information.
+
+## 🚀 Deployment
+
+### Development
+```bash
+# Backend
+cd Backend && python main.py
+
+# Frontend  
+cd Frontend && npm start
 ```
 
-## Usage
+### Production (Recommended)
+- Use production-grade database (PostgreSQL)
+- Set up proper SSL/TLS certificates
+- Configure environment variables securely
+- Use reverse proxy (nginx) for frontend
+- Set up monitoring and logging
 
-1. **Sign up or log in** to your account
-2. **Upload Terraform/Ansible files** or connect a GitHub repository
-3. **Choose analysis type**: Comprehensive, Security, or Cost-focused
-4. **Review AI-generated recommendations** for security, cost, and best practices
-5. **Apply suggested improvements** or create GitHub pull requests
+## 📈 Roadmap
 
-## Sample Infrastructure File
+### Phase 2 Features (In Progress)
+- [ ] Multi-cloud drift detection
+- [ ] Advanced security compliance frameworks
+- [ ] Cost estimation and forecasting
+- [ ] Team collaboration features
 
-A sample Terraform file with various issues is included as `sample_infrastructure.tf` for testing the analysis features.
+### Phase 3 Features (Planned)
+- [ ] CI/CD pipeline integration
+- [ ] Custom rule engine
+- [ ] Advanced reporting and analytics
+- [ ] Enterprise SSO integration
 
-## Contributing
+## 🤝 Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
+This is a pilot version. Feedback and bug reports are welcome!
 
-## License
+## 📄 License
 
-This project is licensed under the MIT License.
+MIT License - see LICENSE file for details.
 
-## Support
+---
 
-For issues and questions, please open an issue on GitHub. 
+**InfraMorph** - Making infrastructure optimization intelligent and automated. 
